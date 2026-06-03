@@ -10,7 +10,7 @@ https://www.loom.com/share/7f8395afc34d43439812c3ad5adacba7
 
 An automated support triage pipeline that ingests incoming customer messages via webhook, classifies and enriches them using GPT-4o, routes them to the correct team, and flags anything uncertain for human review. All output lands in Google Sheets.
 
-Built with n8n (self-hosted), GPT-4o, and Google Sheets. Total time from spec to working implementation: ~1.5 hours.
+Built with n8n (self-hosted), GPT-4o, and Google Sheets. Total time from spec to working implementation: ~2 hours.
 
 ---
 
