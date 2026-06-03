@@ -1,0 +1,397 @@
+{
+  "name": "ArcVault Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "triage",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        304
+      ],
+      "webhookId": "482416fa-73b7-424d-b69e-70f70062cac8",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id",
+              "name": "id",
+              "value": "={{ $json.body.source.replace(/\\s+/g, '_').toLowerCase() + '_' + Date.now() }}",
+              "type": "string"
+            },
+            {
+              "id": "source",
+              "name": "source",
+              "value": "={{ $json.body.source }}",
+              "type": "string"
+            },
+            {
+              "id": "raw_message",
+              "name": "raw_message",
+              "value": "={{ $json.body.raw_message }}",
+              "type": "string"
+            },
+            {
+              "id": "received_at",
+              "name": "received_at",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-1",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"temperature\": 0.1,\n  \"max_tokens\": 800,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an intake triage engine for ArcVault, a B2B software company.\\nYou read one raw customer message and return a single structured JSON object.\\nBe decisive but calibrate your confidence honestly: lower it when the message\\nis ambiguous, mixes multiple intents, or lacks detail.\\n\\nClassify into exactly one category:\\n- Bug Report: something is broken for this user (errors, failures, unexpected behavior).\\n- Incident/Outage: a service is down or degraded, especially affecting multiple users.\\n- Feature Request: asking for new or expanded functionality.\\n- Billing Issue: invoices, charges, pricing, refunds.\\n- Technical Question: how-to, configuration, integration, or evaluation questions.\\n\\nPriority guidance:\\n- High: outages, blocked logins, anything affecting multiple users or money.\\n- Medium: single-user bugs, billing discrepancies, time-sensitive questions.\\n- Low: feature ideas, general curiosity, no urgency.\\n\\nOutput ONLY a valid JSON object in exactly this shape, no prose, no markdown:\\n{\\n  \\\"category\\\": \\\"Bug Report | Incident/Outage | Feature Request | Billing Issue | Technical Question\\\",\\n  \\\"priority\\\": \\\"Low | Medium | High\\\",\\n  \\\"confidence\\\": 0.0,\\n  \\\"core_issue\\\": \\\"one sentence stating the underlying problem\\\",\\n  \\\"entities\\\": {\\n    \\\"account_ids\\\": [],\\n    \\\"invoice_numbers\\\": [],\\n    \\\"error_codes\\\": [],\\n    \\\"amounts\\\": [],\\n    \\\"excess_amount\\\": \\\"if the user states they were charged X too much, extract that amount here, otherwise null\\\",\\n    \\\"products_or_systems\\\": [],\\n    \\\"timeframe\\\": \\\"\\\"\\n  },\\n  \\\"urgency_signal\\\": \\\"short phrase explaining the urgency level you assigned\\\",\\n  \\\"summary\\\": \\\"2-3 sentence human-readable summary for the receiving team\\\"\\n}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Source: {{ $json.source }}\\nMessage:\\n\\\"\\\"\\\"\\n{{ $json.raw_message }}\\n\\\"\\\"\\\"\\nReturn the JSON object now.\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-1",
+      "name": "OpenAI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "openAiApi": {
+          "id": "W0hkwn5wtdLBjYU2",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst prev = $('Normalize').first().json;\n\nconst raw = item.choices[0].message.content || '';\n\nif (!raw || raw.trim() === '') {\n  throw new Error('OpenAI returned empty content');\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(raw);\n} catch (e) {\n  throw new Error('Failed to parse response: ' + raw.substring(0, 500));\n}\n\nconst validCategories = ['Bug Report', 'Feature Request', 'Billing Issue', 'Technical Question', 'Incident/Outage'];\nconst validPriorities = ['Low', 'Medium', 'High'];\n\nconst category = validCategories.includes(parsed.category) ? parsed.category : 'Technical Question';\nconst priority = validPriorities.includes(parsed.priority) ? parsed.priority : 'Medium';\nlet confidence = parseFloat(parsed.confidence);\nif (isNaN(confidence)) confidence = 0.5;\nconfidence = Math.max(0, Math.min(1, confidence));\nconfidence = Math.round(confidence * 100) / 100;\n\nconst entities = parsed.entities || {};\nconst defaultEntities = {\n  account_ids: entities.account_ids || [],\n  invoice_numbers: entities.invoice_numbers || [],\n  error_codes: entities.error_codes || [],\n  amounts: entities.amounts || [],\n  excess_amount: entities.excess_amount || null,\n  products_or_systems: entities.products_or_systems || [],\n  timeframe: entities.timeframe || ''\n};\n\nreturn [{\n  json: {\n    id: prev.id,\n    source: prev.source,\n    raw_message: prev.raw_message,\n    received_at: prev.received_at,\n    category: category,\n    priority: priority,\n    confidence: confidence,\n    core_issue: parsed.core_issue || '',\n    entities: defaultEntities,\n    urgency_signal: parsed.urgency_signal || '',\n    summary: parsed.summary || '',\n    raw_model_output: raw\n  }\n}];"
+      },
+      "id": "code-1",
+      "name": "Parse + Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst routeMap = {\n  'Bug Report': 'Engineering',\n  'Incident/Outage': 'Engineering',\n  'Feature Request': 'Product',\n  'Billing Issue': 'Billing',\n  'Technical Question': 'IT/Security'\n};\n\nconst queue_attempted = routeMap[item.category] || 'Human Review';\n\nlet escalate = false;\nconst reasons = [];\n\nif (item.confidence < 0.70) {\n  escalate = true;\n  reasons.push('Confidence ' + item.confidence + ' < 0.70');\n}\n\nconst incidentPatterns = /outage|down for all users|multiple users affected|stopped loading/i;\nif (item.category === 'Incident/Outage' || incidentPatterns.test(item.raw_message)) {\n  escalate = true;\n  reasons.push('Incident signal detected');\n}\n\nif (item.category === 'Billing Issue') {\n  const amounts = (item.entities.amounts || [])\n    .map(a => parseFloat(String(a).replace(/[^0-9.\\-]/g, '')))\n    .filter(a => !isNaN(a));\n  if (amounts.length >= 2) {\n    const discrepancy = Math.abs(amounts[0] - amounts[1]);\n    if (discrepancy > 500) {\n      escalate = true;\n      reasons.push('Billing discrepancy $' + discrepancy + ' > $500');\n    }\n  }\n}\n\n// Rule 3b — explicit overcharge stated\nif (item.category === 'Billing Issue' && item.entities.excess_amount) {\n  const excess = parseFloat(String(item.entities.excess_amount).replace(/[^0-9.\\-]/g, ''));\n  if (!isNaN(excess) && excess > 500) {\n    escalate = true;\n    reasons.push('Stated overcharge $' + excess + ' > $500');\n  }\n}\n\nconst queue = escalate ? 'Human Review' : queue_attempted;\nconst escalation_reason = reasons.length > 0 ? reasons.join('; ') : '';\nconst processed_at = new Date().toISOString();\nconst entities_json = JSON.stringify(item.entities);\n\nreturn [{\n  json: {\n    id: item.id,\n    source: item.source,\n    category: item.category,\n    priority: item.priority,\n    confidence: item.confidence,\n    core_issue: item.core_issue,\n    entities_json: entities_json,\n    urgency_signal: item.urgency_signal,\n    queue: queue,\n    queue_attempted: queue_attempted,\n    escalate: escalate,\n    escalation_reason: escalation_reason,\n    summary: item.summary,\n    raw_message: item.raw_message,\n    processed_at: processed_at\n  }\n}];"
+      },
+      "id": "code-2",
+      "name": "Route + Escalate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "escalate-check",
+              "leftValue": "={{ $json.escalate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-1",
+      "name": "IF Escalate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1408,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1kX2XDPnYnPLRyTPteuwIYQhaMc7i8Yhs8aMT2pKdH-k/edit?gid=2115479259#gid=2115479259",
+          "mode": "url"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Escalation_Queue"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "sheets-esc",
+      "name": "Append Escalation Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1664,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oLkCLWxDkdZcMSth",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1kX2XDPnYnPLRyTPteuwIYQhaMc7i8Yhs8aMT2pKdH-k/edit?gid=2115479259#gid=2115479259",
+          "mode": "url"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Triage_Output"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "sheets-triage-true",
+      "name": "Append Triage Output (Escalated)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1904,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oLkCLWxDkdZcMSth",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1kX2XDPnYnPLRyTPteuwIYQhaMc7i8Yhs8aMT2pKdH-k/edit?gid=2115479259#gid=2115479259",
+          "mode": "url"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Triage_Output"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "sheets-triage-false",
+      "name": "Append Triage Output",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1664,
+        448
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oLkCLWxDkdZcMSth",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2144,
+        304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse + Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Validate": {
+      "main": [
+        [
+          {
+            "node": "Route + Escalate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route + Escalate": {
+      "main": [
+        [
+          {
+            "node": "IF Escalate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Escalate": {
+      "main": [
+        [
+          {
+            "node": "Append Escalation Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append Triage Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Escalation Queue": {
+      "main": [
+        [
+          {
+            "node": "Append Triage Output (Escalated)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Triage Output (Escalated)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Triage Output": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "versionId": "6d9bb477-f01b-417b-b106-7fc68a90f283",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "15dafed5f55cd39dc6dd2e125d3c00e8ad2abab964b2b3aa405233eec5ba1ba1"
+  },
+  "id": "VBVVOhJA1Ni5kvMQ",
+  "tags": []
+}
