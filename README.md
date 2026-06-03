@@ -2,7 +2,7 @@
 
 ## Demo
 
-[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/7f8395afc34d43439812c3ad5adacba7-with-play.gif)](https://www.loom.com/share/7f8395afc34d43439812c3ad5adacba7)
+https://www.loom.com/share/7f8395afc34d43439812c3ad5adacba7
 
 ---
 
