@@ -41,7 +41,7 @@ All 5 samples processed correctly and consistently across runs:
 
 ## Output sheet
 
-[Google Sheets — Triage Output](#) ← replace with your sheet link
+[Google Sheets — Triage Output](https://docs.google.com/spreadsheets/d/1kX2XDPnYnPLRyTPteuwIYQhaMc7i8Yhs8aMT2pKdH-k/edit?usp=sharing)
 
 ---
 
