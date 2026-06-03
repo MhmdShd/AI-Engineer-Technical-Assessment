@@ -48,7 +48,7 @@ All 5 samples processed correctly and consistently across runs:
 ## How to run
 
 1. Import the n8n workflow JSON into your n8n instance
-2. Set up a Header Auth credential named `Kimi API` with your OpenAI key (or point it at your preferred provider)
+2. Set up a Header Auth credential with your OpenAI key (or point it at your preferred provider)
 3. Set up a Google Sheets OAuth2 credential
 4. Activate the workflow
 5. POST a message to the webhook:
