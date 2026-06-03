@@ -18,8 +18,8 @@ Built with n8n (self-hosted), GPT-4o, and Google Sheets. Total time from spec to
 
 | File | Description |
 |------|-------------|
-| `ArcVault_Architecture_Writeup.docx` | System design, stack choices, routing and escalation logic, and what I would change |
-| `ArcVault_Prompt_Documentation.docx` | The prompts used at each LLM step with design rationale |
+| `ArcVault_Architecture_Writeup.pdf` | System design, stack choices, routing and escalation logic, and what I would change |
+| `ArcVault_Prompt_Documentation.pdf` | The prompts used at each LLM step with design rationale |
 | Google Sheet (link below) | Structured output for all 5 test messages |
 | Loom (link above) | Full walkthrough of the workflow and results |
 
